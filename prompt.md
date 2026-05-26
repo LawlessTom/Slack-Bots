@@ -5,6 +5,7 @@ OUTPUT INSTRUCTIONS
 - The Slack DM's subject line is set separately by the wrapper — do NOT include a date/title header in your output.
 - Do NOT post anything via slack-mcp. The wrapper handles delivery.
 - The output is rendered as PLAIN TEXT in a Slack DM (Workflow Builder strips mrkdwn from variable content). Do NOT use *bold*, _italic_, or `code` markers — they will render as literal asterisks/underscores/backticks. Rely on UPPERCASE headers, two-space indentation, emoji, and separators for visual hierarchy.
+- Emoji MUST be the actual Unicode characters (📊 🌤 📅 📧 💬), NOT Slack colon-shortcodes (`:bar_chart:`, `:mostly_sunny:`, `:date:`, `:e-mail:`, `:speech_balloon:`). Workflow Builder does NOT convert shortcodes in variable content — they render as literal text. Copy the emoji from the template below exactly.
 - Start your output with the stats line.
 
 WORKFLOW
