@@ -54,7 +54,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/LawlessTom/Slack-Bots/main/b
 It will:
 - Verify your prereqs (aifx, jq, GitHub SSH)
 - Clone the kit, run the installer
-- Prompt you for the webhook URL and confirm your email
+- Ask one question (FTE or external contractor — picks `@uber.com` vs `@ext.uber.com`)
 - Launch Claude so you can OAuth google-mcp + slack-mcp (two browser clicks)
 - Run a smoke test — you should get a Slack DM within ~30s
 - Set up the 8am Sydney weekday cron
@@ -62,7 +62,6 @@ It will:
 **Total time: ~3 minutes.** Before you run it, have:
 - An **Uber devpod** ready (provision via [go/devpod](https://devpod.uberinternal.com), `base` flavor is fine)
 - **GitHub SSH** working from the devpod — if `ssh git@github.com` doesn't say "Hi <your-user>!", see [GitHub SSH setup](#github-ssh-setup-one-time-on-your-mac) below
-- The **shared webhook URL** — DM `@tlawle1` on Slack
 - A **Slack profile email** ending in `@ext.uber.com` or `@uber.com`
 
 If you'd rather see every step explicitly, the [manual install path](#manual-install-on-your-devpod) below does the same thing in pieces.
