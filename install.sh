@@ -242,17 +242,26 @@ TASK:
 If no new form submissions are found, output the existing preferences file content UNCHANGED."
 
   tmp_prefs=$(mktemp)
-  if /usr/bin/aifx agent run claude -p "$sync_prompt" > "$tmp_prefs" 2>/dev/null; then
-    if head -1 "$tmp_prefs" | grep -q '^# Morning Briefing — Personal Preferences'; then
-      mv "$tmp_prefs" "$PREFS_FILE"
+  if /usr/bin/aifx agent run claude -p "$sync_prompt" > "$tmp_prefs" 2>&1; then
+    # Tolerant extraction: find the header line anywhere in the output and strip
+    # any preamble before it (Claude often adds "Here's the updated file:" etc.)
+    if grep -q '^# Morning Briefing — Personal Preferences' "$tmp_prefs"; then
+      awk '/^# Morning Briefing — Personal Preferences/{found=1} found{print}' "$tmp_prefs" > "$tmp_prefs.clean"
+      mv "$tmp_prefs.clean" "$PREFS_FILE"
       date -u +%Y-%m-%dT%H:%M:%SZ > "$LAST_SYNC_FILE"
       echo "Prefs synced from Slack"
     else
-      echo "WARN: prefs sync output invalid — keeping existing prefs file"
+      echo "WARN: prefs sync output missing expected header — keeping existing prefs file"
+      echo "--- raw Claude output (first 100 lines) ---"
+      head -100 "$tmp_prefs"
+      echo "--- end raw output ---"
       rm -f "$tmp_prefs"
     fi
   else
-    echo "WARN: prefs sync Claude call failed — keeping existing prefs file"
+    echo "WARN: prefs sync Claude call exited non-zero"
+    echo "--- raw output (first 100 lines) ---"
+    head -100 "$tmp_prefs"
+    echo "--- end raw output ---"
     rm -f "$tmp_prefs"
   fi
 }
