@@ -86,11 +86,11 @@ echo ""
 echo "  Are you an Uber FTE or external contractor?"
 echo "    [1] FTE        (email will be ${USER}@uber.com)"
 echo "    [2] ext        (email will be ${USER}@ext.uber.com)"
-printf "  Choose [1/2]: " > /dev/tty
+printf "  Choose [1/2 or fte/ext]: " > /dev/tty
 read -r FTE_CHOICE < /dev/tty
-case "$FTE_CHOICE" in
-  1) RECIPIENT_EMAIL="${USER}@uber.com" ;;
-  2) RECIPIENT_EMAIL="${USER}@ext.uber.com" ;;
+case "$(echo "$FTE_CHOICE" | tr '[:upper:]' '[:lower:]')" in
+  1|fte) RECIPIENT_EMAIL="${USER}@uber.com" ;;
+  2|ext) RECIPIENT_EMAIL="${USER}@ext.uber.com" ;;
   *) RECIPIENT_EMAIL="${USER}@ext.uber.com"; yellow "  ! Unrecognised choice — defaulting to ext" ;;
 esac
 green "  ✓ Email: $RECIPIENT_EMAIL"
@@ -120,7 +120,7 @@ green "  ✓ Config written ($ENV_FILE, chmod 600)"
 echo ""
 bold "[5/5] OAuth + smoke test"
 echo ""
-yellow "  Claude will open in a moment. Run these THREE commands at the ❯ prompt:"
+yellow "  Claude will open in a moment. Type these THREE commands at the ❯ prompt — ONE AT A TIME, pressing Enter after each (do NOT paste all three together — Claude will treat them as one prompt and get confused):"
 echo ""
 echo "    list my next 3 google calendar events"
 echo "    list my unread slack DMs from today"

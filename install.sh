@@ -73,19 +73,18 @@ echo "  ✓ Claude Code ($(claude --version 2>&1 | head -1))"
 # ───────────────────────────────────────────────────────────
 # 3. MCP servers
 # ───────────────────────────────────────────────────────────
-echo "[3/7] Registering google-mcp and slack-mcp..."
+echo "[3/7] Registering google-mcp and slack-mcp for claude-code..."
 for mcp in google-mcp slack-mcp; do
-  if aifx mcp list 2>/dev/null | grep -qw "$mcp"; then
-    echo "  ✓ $mcp already registered"
+  if aifx mcp list --clients claude-code 2>/dev/null | grep -qw "$mcp"; then
+    echo "  ✓ $mcp already registered for claude-code"
     continue
   fi
   echo "  Adding $mcp..."
-  if aifx mcp add "$mcp" 2>&1 | sed 's/^/      /'; then
+  if aifx mcp add "$mcp" --clients claude-code 2>&1 | sed 's/^/      /'; then
     echo "  ✓ $mcp registered"
   else
     echo "  ! $mcp add returned non-zero — proceeding anyway."
-    echo "    If the OAuth step later fails for this MCP, run manually:"
-    echo "      aifx mcp add $mcp"
+    echo "    Run manually: aifx mcp add $mcp --clients claude-code"
   fi
 done
 echo "  (you must complete OAuth interactively — see next steps)"
