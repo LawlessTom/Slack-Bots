@@ -212,6 +212,13 @@ PROMPT=$(sed \
   /usr/bin/aifx agent run claude -p "$PROMPT" > "$TMP_BODY"
   echo "=== briefing body ($(wc -c < "$TMP_BODY") bytes) ==="
   cat "$TMP_BODY"
+  # Pause check: if Claude found an active pause preference, the body starts
+  # with PAUSED_BRIEFING — skip posting and exit cleanly.
+  if head -1 "$TMP_BODY" | grep -q '^PAUSED_BRIEFING'; then
+    echo "=== paused — skipping webhook post ==="
+    echo "=== $(date -Iseconds) exit=0 (paused) ==="
+    exit 0
+  fi
   echo "=== posting to webhook ==="
   PAYLOAD=$(jq -n \
     --arg email "$RECIPIENT_EMAIL" \
