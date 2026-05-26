@@ -1,8 +1,10 @@
-# Morning Briefing — Tier 2 Install Kit
+# Morning Briefing — Install Kit
 
 A daily personalized briefing delivered to your Slack DMs at 8:00 AEST, Mon–Fri.
 
-Pulls from your calendar, Gmail, and Slack via MCPs; ranks by urgency / seniority / direct address; delivers via a shared Slack Workflow Builder webhook so notifications actually fire on your phone.
+Pulls from your Google Calendar, Gmail, and Slack via MCPs; ranks items by urgency / seniority / direct address; delivers via a shared Slack Workflow Builder webhook so push notifications actually fire on your phone.
+
+**Kit owner:** DM Thomas Lawless (`@tlawle1`) on Slack — for the webhook URL and any setup help.
 
 ## What you get
 
@@ -11,56 +13,117 @@ A daily DM from **Morning Briefing Notifier** that looks like:
 ```
 The Day Ahead — Tue 26 May
 
-📊 Today at a glance — 5 upcoming meetings · 12 unread email · 3 need response
+📊 TODAY AT A GLANCE
+5 upcoming meetings · 12 unread email · 3 need response
 
 ────────────────────────────
-🌤 Weather — Sydney
+🌤 WEATHER — Sydney
 🌦 Showers, 19°C, SW wind 9 mph
 
 ────────────────────────────
-📅 Upcoming meetings (AEST)
-• 12:00 — Lunch Break: ANZ Region
-• 15:00 — AI Office Hours | Ally Price [Zoom]
-...
+📅 UPCOMING MEETINGS  (AEST)
+  12:00  Lunch Break: ANZ Region
+  15:00  AI Office Hours | Ally Price  [Zoom]
+  ...
 
 ────────────────────────────
-📧 Email — action first
-1. Leyre Herranz — 2026 Consumer Ops Team Meeting
-   Assigned action item: lead AI Corner Thursday [by Thu 28 May]
-...
+📧 EMAIL — ACTION FIRST
+  1.  Leyre Herranz (Google Slides)  —  2026 Consumer Ops Team Meeting
+      Action item assigned: lead AI Corner Thursday [by Thu 28 May]
+  ...
 
 ────────────────────────────
-💬 Slack — response needed
-• Leyre Herranz (#anz-rider-ops) — lead AI Corner, update deck
-...
+💬 SLACK — RESPONSE NEEDED
+  • Leyre Herranz (#anz-rider-ops)  —  prep and lead AI Corner section
+  ...
 
 ────────────────────────────
-💬 Slack — FYI
-• Viviane Pretet (DM) — CBA matching segment too small
-...
+💬 SLACK — FYI
+  • Viviane Pretet (DM)  —  CBA matching segment too small for CRM
+  ...
 ```
 
-## Prerequisites
+## One-paste install (the easy path)
 
-- An Uber devpod (provision at [go/devpod](https://devpod.uberinternal.com) — `base` flavor is fine).
-- 10–15 minutes for setup the first time.
-- The team's shared Slack webhook URL (ask the kit owner).
-
-## Quick install
-
-On your devpod:
+On your **devpod** (not your Mac), paste this one line into the terminal:
 
 ```bash
-# Clone the kit (or copy the files to your devpod)
-mkdir -p ~/src && cd ~/src
-# git clone <internal-repo-url> morning-briefing-kit
-# OR copy install.sh + prompt.md from the kit location
+curl -fsSL https://raw.githubusercontent.com/LawlessTom/Slack-Bots/main/bootstrap.sh | bash
+```
 
+It will:
+- Verify your prereqs (aifx, jq, GitHub SSH)
+- Clone the kit, run the installer
+- Prompt you for the webhook URL and confirm your email
+- Launch Claude so you can OAuth google-mcp + slack-mcp (two browser clicks)
+- Run a smoke test — you should get a Slack DM within ~30s
+- Set up the 8am Sydney weekday cron
+
+**Total time: ~3 minutes.** Before you run it, have:
+- An **Uber devpod** ready (provision via [go/devpod](https://devpod.uberinternal.com), `base` flavor is fine)
+- **GitHub SSH** working from the devpod — if `ssh git@github.com` doesn't say "Hi <your-user>!", see [GitHub SSH setup](#github-ssh-setup-one-time-on-your-mac) below
+- The **shared webhook URL** — DM `@tlawle1` on Slack
+- A **Slack profile email** ending in `@ext.uber.com` or `@uber.com`
+
+If you'd rather see every step explicitly, the [manual install path](#manual-install-on-your-devpod) below does the same thing in pieces.
+
+## Prerequisites (manual path)
+
+1. **An Uber devpod.** Most engineers already have one. If not, provision via [go/devpod](https://devpod.uberinternal.com) — `base` flavor is fine.
+
+2. **GitHub SSH access from your devpod.** A fresh devpod can't `git clone` from github.com until you set this up. ~5 min one-time. See "GitHub SSH setup" below.
+
+3. **The shared webhook URL.** It's a secret, not committed to this repo. DM Thomas Lawless (`@tlawle1`) for it.
+
+4. **A Slack profile email of `@ext.uber.com` or `@uber.com`** — the workflow looks you up by this email to send the DM.
+
+## GitHub SSH setup (one-time, on your Mac)
+
+If `ssh git@github.com` from your devpod returns `Hi <your-github-user>!`, skip this section.
+
+On your **Mac** (not the devpod — ssh agent forwarding carries the identity through):
+
+```bash
+# 1. Verify your GitHub account is linked to Uber
+open https://accounts.uberinternal.com/access_provisioning/user_access
+# → "Add or update your GitHub username" if not already linked
+
+# 2. Generate a fresh GitHub SSH key via ussh
+ussh --ussh-replace --ussh-setup-github
+
+# 3. Add the public key to GitHub (ussh copied it to clipboard)
+open https://github.com/settings/ssh/new
+# Paste key, name it "uber-laptop", click Add SSH key
+
+# 4. Refresh ussh cert
+ussh
+
+# 5. Verify from Mac
+ssh git@github.com
+# Expect: "Hi <your-github-user>!..."
+```
+
+Then reconnect to your devpod (so the fresh ssh-agent forwards):
+
+```bash
+# In your devpod terminal
+exit
+ssh <your-devpod-host>
+ssh git@github.com   # should succeed
+```
+
+Full troubleshooting: [go/DEV101](https://go/DEV101) or `#slack-bots-dev`.
+
+## Manual install (on your devpod)
+
+```bash
+cd ~ && git clone git@github.com:LawlessTom/Slack-Bots.git morning-briefing-kit
 cd morning-briefing-kit
+chmod +x install.sh
 ./install.sh
 ```
 
-The installer is idempotent — safe to re-run if you want to update the prompt or wrapper.
+The installer is idempotent — safe to re-run anytime you want to update the wrapper from a fresh clone.
 
 It will:
 1. Install Claude Code and the google-mcp + slack-mcp servers
@@ -69,6 +132,7 @@ It will:
 4. Drop the prompt at `~/.local/share/morning-briefing/prompt.md`
 5. Schedule cron for 8am Sydney weekdays
 6. Stub a config file at `~/.config/morning-briefing.env` for you to fill in
+7. Record `KIT_DIR` so the wrapper can `git pull` prompt updates each morning
 
 ## Three manual steps after install
 
@@ -78,40 +142,57 @@ It will:
 nano ~/.config/morning-briefing.env
 ```
 
-Required:
-- **`WEBHOOK_SECRET_PATH`** — uSecret path holding the shared webhook URL (e.g. `/team/ai-enablement/morning-briefing-webhook`). Ask the kit owner for the exact path. **Or** fall back to `WEBHOOK_URL=` with the URL pasted directly if uSecret isn't set up yet.
-- **`RECIPIENT_EMAIL`** — your Uber email (e.g. `you@ext.uber.com`).
+Set these two:
 
-Optional (improves prompt personalization):
-- `RECIPIENT_NAME="Firstname Lastname"`
-- `RECIPIENT_FIRST_NAME="Firstname"`
-- `RECIPIENT_USERNAME="yourhandle"`
+```bash
+WEBHOOK_URL=https://hooks.slack.com/triggers/...   # DM @tlawle1 for this
+RECIPIENT_EMAIL=you@ext.uber.com                   # your Uber/ext email
+```
 
-If you're using `WEBHOOK_SECRET_PATH`, make sure you have read access to that uSecret path (the kit owner adds your email or AD group to the secret's `--readable` list).
+Optional (improves prompt personalization for direct-address ranking):
 
-### 2. Authenticate the MCPs (interactive, one-time)
+```bash
+RECIPIENT_NAME="Firstname Lastname"
+RECIPIENT_FIRST_NAME="Firstname"
+RECIPIENT_USERNAME="yourhandle"
+```
 
-The cron job runs headless and can't open OAuth browser flows. You must complete OAuth once interactively, which caches the tokens:
+Save (`Ctrl+O`, `Enter`, `Ctrl+X`). The file is automatically `chmod 600` by the installer.
+
+### 2. Authenticate Google + Slack MCPs (one-time, interactive)
+
+The cron job runs headless and can't open OAuth browser flows. Complete OAuth once interactively to cache tokens:
 
 ```bash
 aifx agent run claude
 ```
 
-In the Claude session, run these two prompts (they trigger OAuth for each MCP):
+**First-run warning:** if this is your first time using Claude Code on the devpod, you'll hit a setup wizard (theme picker, etc.). Pick **Dark mode** (option 2) and step through any other screens — they're one-time.
+
+Once you see the `❯` prompt, run two queries to trigger OAuth for each MCP:
 
 ```
 list my next 3 google calendar events
+```
+
+A URL will print. **Open it in your Mac browser** (not the devpod) — completes OAuth via Uber SSO, redirects to confirm.
+
+```
 list my unread slack DMs from today
+```
+
+Same pattern — open URL in Mac browser, complete OAuth.
+
+```
 /exit
 ```
 
-Approve the OAuth prompts in the browser that opens. Done — tokens are now cached and the cron job can use them headlessly.
+Tokens are now cached at `~/.aifx/` and the cron job can use them.
 
-### 3. Smoke-test
+### 3. Smoke test
 
 ```bash
-~/bin/run-morning-briefing.sh
-tail -200 ~/.claude/logs/morning-briefing-$(date +%Y%m%d).log
+~/bin/run-morning-briefing.sh && tail -200 ~/.claude/logs/morning-briefing-$(date +%Y%m%d).log
 ```
 
 You should:
@@ -119,142 +200,128 @@ You should:
 - Receive a Slack DM from **Morning Briefing Notifier** within 10 seconds
 - Get a phone push notification (assuming Slack notification settings are normal)
 
-If any of those fail, see **Troubleshooting** below.
+If any fail, see **Troubleshooting** below.
+
+## Timezone & schedule
+
+The cron is scheduled for **8:00 Sydney time, Mon–Fri** by default. The devpod is on UTC, but cron honors the `TZ=Australia/Sydney` line so this Just Works.
+
+To change the time or timezone, edit your crontab:
+
+```bash
+crontab -e
+```
+
+You'll see:
+
+```
+TZ=Australia/Sydney
+0 8 * * 1-5 /home/user/bin/run-morning-briefing.sh
+```
+
+Change `TZ=` to your zone (e.g. `America/Los_Angeles`, `Europe/London`, `America/New_York`) and the hour to your local 8am. Save.
 
 ## Phone notification settings
 
-Slack DMs from "Morning Briefing Notifier" are treated as messages from a bot/app, not from you — so they fire normal push notifications. But verify:
+Slack DMs from "Morning Briefing Notifier" are messages from a workflow bot — they fire push notifications like any normal DM. Verify:
 
-- Slack mobile → **Settings** → **Notifications** → ensure "Direct messages, mentions & keywords" is enabled.
-- If you have Do Not Disturb scheduled for 8am, exclude DMs from "Morning Briefing Notifier" (or disable DND).
-
-## Shared webhook URL (uSecret)
-
-There is ONE webhook URL for the whole team. The Workflow Builder workflow it triggers (`Morning Briefing Notifier`) accepts `recipient_email`, `subject`, and `body` as variables, then resolves the email to a Slack user and DMs them.
-
-This means:
-- ✅ One webhook serves the whole team
-- ✅ No per-user Slack setup beyond filling in the env file
-- ❗ The webhook URL is a secret — anyone with it can DM any teammate as the bot
-
-**Storage:** the URL lives in uSecret. The kit owner creates the secret once with team-shared read access; adopters reference it by path in their env file.
-
-### One-time kit-owner setup
-
-```bash
-# In a fresh devpod shell
-cerberus -t usecret -s wonkamaster
-
-# Create the secret (interactive — paste the webhook URL when prompted)
-usec write \
-  --path="/team/<your-team>/morning-briefing-webhook" \
-  --owner="kit-owner@ext.uber.com" \
-  --readable="kit-owner@ext.uber.com,AD:<your-team-AD-group>" \
-  --writeable="kit-owner@ext.uber.com"
-```
-
-The `AD:<group>` entry in `--readable` lets every teammate in that AD group fetch the secret without you listing them individually. Find your team's AD group name in uHR / IDM, or list teammates' emails explicitly (comma-separated).
-
-### Adopter usage
-
-In `~/.config/morning-briefing.env`:
-
-```bash
-WEBHOOK_SECRET_PATH=/team/<your-team>/morning-briefing-webhook
-```
-
-The wrapper runs `cerberus -t usecret -s wonkamaster` then `usec read` at runtime — no plaintext URL ever lands on disk.
-
-### Fallback: plaintext URL
-
-If uSecret access isn't available (e.g. a teammate isn't in the AD group yet), the env file accepts a direct `WEBHOOK_URL=https://hooks.slack.com/triggers/...` as a fallback. Less secure; treat it like a password and `chmod 600` the env file.
-
-**Do not** paste the URL into chat, wiki, or git repos under any circumstances.
-
-## Customizing your briefing
-
-The prompt lives at `~/.local/share/morning-briefing/prompt.md`. By default, the wrapper auto-updates it from the kit repo each morning (see "Auto-updates" below). To experiment with your own prompt tweaks WITHOUT auto-updates overwriting them, set `KIT_PIN=local` in your env file — the wrapper will skip the git-pull and keep using your edited local copy until you remove the pin.
-
-Common tweaks:
-- Change the importance signals (e.g. add project keywords)
-- Add new sections (e.g. "GitHub PRs awaiting your review")
-- Adjust formatting (sections, emoji, separators)
-
-If your change is generally useful, propose it upstream — the kit owner can update the canonical `prompt.md` and the next morning everyone has it.
+- Slack mobile → **Settings** → **Notifications** → "Direct messages, mentions & keywords" enabled
+- If you have Do Not Disturb scheduled for 8am local time, exclude DMs from "Morning Briefing Notifier" or shift your DND window
 
 ## Auto-updates
 
-If the kit was installed from a git clone, the wrapper records `KIT_DIR=<path-to-clone>` in your env file. Each morning before generating the briefing, it:
+When you installed from a git clone, the installer recorded `KIT_DIR=<your-clone>` in your env file. Each morning before generating the briefing, the wrapper:
 
-1. `git pull --rebase --quiet` in `$KIT_DIR` (no-op if already up to date)
+1. `git pull --rebase --quiet` in `$KIT_DIR`
 2. Validates the pulled `prompt.md` is non-empty and contains the required placeholders
-3. Copies it to the runtime location (backs up the previous version as `prompt.md.bak`)
+3. Refreshes the runtime prompt at `~/.local/share/morning-briefing/prompt.md` (keeps the previous version as `.bak`)
 4. Proceeds with the briefing
 
-If the pull fails (network blip, git auth issue) or the new prompt fails validation, the wrapper falls back to the cached `prompt.md` — your briefing always runs, even if updates can't reach you that day.
+If the pull fails (network blip, git auth issue) or the new prompt fails validation, the wrapper falls back to the cached prompt — your briefing always runs.
 
-**To opt out of auto-updates** (pin to a specific version): edit `~/.config/morning-briefing.env` and add:
+**To opt out of auto-updates** (pin to your locally cached prompt), add to your env file:
 
 ```bash
-KIT_PIN=local          # stay on whatever's currently cached locally
-# or
-KIT_PIN=v1.3           # stay on a specific tag/commit (advanced — you'd need to checkout that ref in $KIT_DIR yourself)
+KIT_PIN=local
 ```
 
-**Wrapper script changes are NOT auto-updated** — only the prompt. If the kit owner ships a new wrapper, rerun `install.sh` to pick it up:
+**Wrapper script changes are NOT auto-updated** — only the prompt. To pick up wrapper changes:
 
 ```bash
 cd $KIT_DIR && git pull && ./install.sh
 ```
 
+## Customizing your briefing
+
+The prompt is at `~/.local/share/morning-briefing/prompt.md` (auto-updated) or `$KIT_DIR/prompt.md` (canonical).
+
+To experiment without your tweaks being overwritten by auto-update, set `KIT_PIN=local` in your env file. To upstream a useful change, edit `$KIT_DIR/prompt.md`, smoke-test, then `git commit && git push` — everyone gets it next morning.
+
+Common tweaks:
+- Add project keywords to importance ranking ("Cortana", "Pulse", "your-team")
+- Add new sections (e.g. "GitHub PRs awaiting your review")
+- Adjust the recipient name / personalization tone
+- Change number of email items surfaced
+
 ## Troubleshooting
 
-**Log shows `Webhook response: {"ok":false,...}`**
-The Slack workflow rejected the payload. Most likely cause: `RECIPIENT_EMAIL` doesn't match a Slack user (e.g. you used `@uber.com` instead of `@ext.uber.com`). Check the workflow's activity log in Slack → Workflow Builder → Morning Briefing Notifier → Activity.
+**Log shows `Webhook response: {"ok":false,...}` or DM doesn't arrive**
+The Slack workflow rejected the payload. Most common cause: `RECIPIENT_EMAIL` doesn't match a Slack user (e.g. `@uber.com` instead of `@ext.uber.com`, or a typo). Check the workflow activity log at Slack → Workflow Builder → Morning Briefing Notifier → Activity.
 
 **Log shows authentication errors from google-mcp or slack-mcp**
-OAuth tokens have expired or aren't cached for this directory. Re-run `aifx agent run claude` from `$HOME` and trigger each MCP once to refresh.
+OAuth tokens have expired or aren't cached for `$HOME`. Re-run `aifx agent run claude` from your home directory and trigger each MCP once to refresh.
 
-**Log file doesn't exist at 8:05am**
-Cron didn't fire. Check `grep CRON /var/log/syslog | tail -40` or `journalctl -u cron --since "1 hour ago"`. Verify `crontab -l` shows the entry.
+**Log file doesn't exist after 8:05am local**
+Cron didn't fire. Check:
+```bash
+crontab -l                                                       # confirm entry exists
+grep CRON /var/log/syslog | tail -40                             # or
+journalctl -u cron --since "1 hour ago" 2>/dev/null | tail -40
+```
 
-**Briefing arrives but missing Slack section content**
-The slack-mcp tool surface may differ from what the prompt expects. Run `aifx agent run claude` interactively and ask "what tools do you have available from slack-mcp" — adjust the prompt to use the actual tool names.
+**Briefing arrives but missing some Slack content (e.g. no @-mentions)**
+The slack-mcp tool surface may differ from what the prompt expects. Run `aifx agent run claude` interactively and ask "what tools do you have available from slack-mcp" — adjust the prompt to use the actual tool names if needed.
 
-**`failed to ensure marketplace uber-code/devexp-agent-marketplace` warning**
-Harmless. Your devpod doesn't have GitHub SSH keys for `code.uber.internal`. Fix by running `ussh` and setting up a GitHub SSH key (see internal docs).
+**Briefing has literal `*` or `_` in the text instead of bold/italic**
+Workflow Builder strips mrkdwn from variables. The prompt should produce plain text only. If you see asterisks, the local prompt cache might be stale — run `cd $KIT_DIR && git pull && cp prompt.md ~/.local/share/morning-briefing/prompt.md`.
+
+**`failed to ensure marketplace uber-code/devexp-agent-marketplace` warning in log**
+Harmless cosmetic. Your GitHub identity doesn't have access to the `uber-code` org. Doesn't affect the briefing — no plugin skills are used.
 
 **Want to disable temporarily**
 ```bash
-crontab -e   # comment out or delete the morning-briefing line
+crontab -e   # comment out (#) or delete the morning-briefing line
 ```
 
 ## Uninstall
 
 ```bash
-# Remove cron entry
+# 1. Remove cron entry
 crontab -e   # delete the morning-briefing line and TZ=Australia/Sydney line
 
-# Remove files
+# 2. Remove kit files
 rm -rf \
   ~/bin/run-morning-briefing.sh \
   ~/.config/morning-briefing.env \
   ~/.local/share/morning-briefing/ \
+  ~/morning-briefing-kit/ \
   ~/.claude/logs/morning-briefing-*.log
 
-# (Optional) deauthorize the MCP workflow in Slack — visit your apps and revoke
+# 3. (Optional) deauthorize the MCP in Slack — Slack apps page, revoke
+# 4. (Optional) remove MCP registrations
+#    aifx mcp remove google-mcp slack-mcp
 ```
-
-The `aifx mcp add` registrations stay (they're useful for other Claude uses); remove with `aifx mcp remove google-mcp slack-mcp` if you want a complete cleanup.
 
 ## Architecture
 
 ```
-cron (8am AEST weekdays)
+cron (8am local TZ, weekdays)
   └─> ~/bin/run-morning-briefing.sh
-        ├─> sources ~/.config/morning-briefing.env (WEBHOOK_URL, RECIPIENT_EMAIL, ...)
-        ├─> interpolates ~/.local/share/morning-briefing/prompt.md
-        ├─> aifx agent run claude -p "<prompt>"  → stdout = briefing body
+        ├─> sources ~/.config/morning-briefing.env (WEBHOOK_URL, RECIPIENT_*, KIT_DIR)
+        ├─> auto-update: cd $KIT_DIR && git pull (skipped if KIT_PIN set)
+        ├─> validates + refreshes ~/.local/share/morning-briefing/prompt.md
+        ├─> interpolates {{RECIPIENT_*}} placeholders
+        ├─> aifx agent run claude -p "<prompt>"  → stdout = briefing body (plain text)
         │     uses google-mcp, slack-mcp, WebFetch(wttr.in)
         └─> curl POST <WEBHOOK_URL> with {recipient_email, subject, body}
               └─> Slack Workflow Builder: "Morning Briefing Notifier"
@@ -266,14 +333,18 @@ cron (8am AEST weekdays)
 
 | File | Purpose |
 |---|---|
-| `install.sh` | Installer (idempotent). Run on each teammate's devpod. |
-| `prompt.md` | Briefing prompt template with `{{RECIPIENT_*}}` placeholders. |
+| `bootstrap.sh` | One-paste installer — clones the kit, runs install.sh, prompts for webhook, OAuths MCPs, smoke-tests. |
+| `install.sh` | Lower-level installer (idempotent). Called by bootstrap.sh; can also be run directly. |
+| `prompt.md` | Briefing prompt template with `{{RECIPIENT_*}}` placeholders. Auto-updated. |
 | `README.md` | This file. |
+
+## Sharing & contributing
+
+The prompt iterates. If you find a useful tweak, push it upstream — every adopter gets it next morning via auto-update. Coordinate larger changes via DM to `@tlawle1`.
 
 ## Open improvements (future work)
 
-- ~~Promote `WEBHOOK_URL` storage from `.env` file to uSecret~~ ✅ done
-- ~~Fix the `ussh` / GitHub key path so the marketplace warning stops printing~~ — documented in main wiki; not a kit concern
-- Add a `/briefing-now` Slack slash command for on-demand briefings (requires custom Slack app + EngSec).
-- Multi-timezone support — currently hardcoded to Australia/Sydney.
-- Optional sections per-user — let env file toggle weather, email, slack independently.
+- Promote `WEBHOOK_URL` to uSecret (v2 needs proper namespace setup — currently kept as `chmod 600` .env file)
+- Multi-recipient owner workflow for delivering to non-devpod users (PMs, data folks who only work in DSW)
+- Optional per-section toggles in env file (disable weather, slack, email independently)
+- Add `/briefing-now` Slack slash command for on-demand briefings (requires custom Slack app + EngSec)
