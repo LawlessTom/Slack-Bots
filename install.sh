@@ -74,9 +74,21 @@ echo "  ✓ Claude Code ($(claude --version 2>&1 | head -1))"
 # 3. MCP servers
 # ───────────────────────────────────────────────────────────
 echo "[3/7] Registering google-mcp and slack-mcp..."
-aifx mcp add google-mcp >/dev/null 2>&1
-aifx mcp add slack-mcp  >/dev/null 2>&1
-echo "  ✓ MCPs registered (you must complete OAuth interactively — see next steps)"
+for mcp in google-mcp slack-mcp; do
+  if aifx mcp list 2>/dev/null | grep -qw "$mcp"; then
+    echo "  ✓ $mcp already registered"
+    continue
+  fi
+  echo "  Adding $mcp..."
+  if aifx mcp add "$mcp" 2>&1 | sed 's/^/      /'; then
+    echo "  ✓ $mcp registered"
+  else
+    echo "  ! $mcp add returned non-zero — proceeding anyway."
+    echo "    If the OAuth step later fails for this MCP, run manually:"
+    echo "      aifx mcp add $mcp"
+  fi
+done
+echo "  (you must complete OAuth interactively — see next steps)"
 
 # ───────────────────────────────────────────────────────────
 # 4. Claude permissions
