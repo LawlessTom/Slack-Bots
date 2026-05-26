@@ -232,19 +232,15 @@ SUBJECT="The Day Ahead — $(TZ=Australia/Sydney date '+%a %d %b')"
 {
   echo "=== $(date -Iseconds) start ==="
 
-  # Inject current prefs file into {{PREFERENCES}} placeholder, then substitute
-  # per-user variables. awk handles the multi-line file injection cleanly.
-  PREFS_CONTENT=$(cat "$PREFS_FILE")
-  PROMPT=$(awk -v prefs="$PREFS_CONTENT" '
-    index($0, "{{PREFERENCES}}") {
-      sub("{{PREFERENCES}}", prefs)
-    }
-    { print }
-  ' "$PROMPT_FILE" | sed \
+  # Substitute per-user variables in the prompt. The local prefs file is a
+  # CACHE only — Claude rebuilds prefs from Slack on every run and outputs
+  # the fresh snapshot, which the wrapper extracts below.
+  PROMPT=$(sed \
     -e "s|{{RECIPIENT_NAME}}|$RECIPIENT_NAME|g" \
     -e "s|{{RECIPIENT_EMAIL}}|$RECIPIENT_EMAIL|g" \
     -e "s|{{RECIPIENT_FIRST_NAME}}|$RECIPIENT_FIRST_NAME|g" \
-    -e "s|{{RECIPIENT_USERNAME}}|$RECIPIENT_USERNAME|g")
+    -e "s|{{RECIPIENT_USERNAME}}|$RECIPIENT_USERNAME|g" \
+    "$PROMPT_FILE")
 
   echo "=== running Claude (briefing + prefs snapshot) ==="
   /usr/bin/aifx agent run claude -p "$PROMPT" > "$TMP_BODY"
