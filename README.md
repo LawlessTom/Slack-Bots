@@ -48,7 +48,7 @@ The Day Ahead — Tue 26 May
 On your **devpod** (not your Mac), paste this one line into the terminal:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/LawlessTom/Slack-Bots/main/bootstrap.sh | bash
+bash <(curl -fsSL https://raw.githubusercontent.com/LawlessTom/Slack-Bots/main/bootstrap.sh)
 ```
 
 It will:

@@ -2,7 +2,10 @@
 # Morning Briefing — one-paste bootstrap.
 # Run this on your Uber devpod (NOT your Mac):
 #
-#   curl -fsSL https://raw.githubusercontent.com/LawlessTom/Slack-Bots/main/bootstrap.sh | bash
+#   bash <(curl -fsSL https://raw.githubusercontent.com/LawlessTom/Slack-Bots/main/bootstrap.sh)
+#
+# (Note the `bash <(...)` form, not `curl | bash` — the latter feeds the script
+# in via stdin, which interferes with the interactive prompts and ssh calls.)
 #
 # It will:
 #   1. Verify prereqs (aifx, jq, git)
@@ -61,7 +64,10 @@ bold "[2/6] Verifying GitHub SSH access..."
 # `ssh -T git@github.com` always exits 1 (GitHub denies shell), so capture
 # output explicitly and grep on that rather than relying on the pipeline's
 # exit code (which pipefail would treat as failure).
-SSH_OUT=$(ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -T git@github.com 2>&1 || true)
+# `</dev/null` is critical when this script is run via `curl | bash` — ssh
+# otherwise inherits bash's stdin (the pipe) and consumes the rest of the
+# script, killing the process silently.
+SSH_OUT=$(ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -T git@github.com </dev/null 2>&1 || true)
 if ! echo "$SSH_OUT" | grep -q "successfully authenticated"; then
   red "  ✗ GitHub SSH not working from this devpod."
   echo ""
