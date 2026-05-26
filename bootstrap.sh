@@ -58,7 +58,11 @@ green "  ✓ aifx, git, curl, jq all present"
 # 2. GitHub SSH
 # ───────────────────────────────────────────────────────────
 bold "[2/6] Verifying GitHub SSH access..."
-if ! ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -T git@github.com 2>&1 | grep -q "successfully authenticated"; then
+# `ssh -T git@github.com` always exits 1 (GitHub denies shell), so capture
+# output explicitly and grep on that rather than relying on the pipeline's
+# exit code (which pipefail would treat as failure).
+SSH_OUT=$(ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -T git@github.com 2>&1 || true)
+if ! echo "$SSH_OUT" | grep -q "successfully authenticated"; then
   red "  ✗ GitHub SSH not working from this devpod."
   echo ""
   yellow "  Fix on your Mac (not the devpod):"
