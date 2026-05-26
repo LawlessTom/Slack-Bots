@@ -203,89 +203,11 @@ init_prefs_file() {
 hide_sections: (none)
 timezone: Australia/Sydney
 pause_until: (none)
+last_synced_at: 1970-01-01T00:00:00Z
 
 ## Feedback rules (newest first; Claude follows these alongside the central template)
 (none yet)
 PREFS_INIT_EOF
-}
-
-# ───────────────────────────────────────────────────────────
-# Preferences: sync new form submissions from Slack into the local prefs file.
-# Uses Claude to query slack-mcp, parse the form DMs, and rewrite the file.
-# ───────────────────────────────────────────────────────────
-sync_prefs_from_slack() {
-  local last_sync current_prefs sync_prompt tmp_prefs
-  last_sync=$(cat "$LAST_SYNC_FILE" 2>/dev/null || echo "1970-01-01T00:00:00Z")
-  current_prefs=$(cat "$PREFS_FILE")
-
-  sync_prompt="You are syncing personal preferences from Slack into a local preferences file.
-
-CURRENT PREFERENCES FILE CONTENT:
-\`\`\`
-${current_prefs}
-\`\`\`
-
-LAST SYNC TIMESTAMP: ${last_sync}
-
-TASK:
-1. Query slack-mcp for direct messages from \"Morning Briefing Notifier\" to ${RECIPIENT_EMAIL} with timestamps STRICTLY AFTER ${last_sync}.
-2. Among those, find DMs whose body contains the literal text \"Hide these sections from your briefing\" — these are Tweaks form submissions.
-3. For each new form submission found, in chronological order (oldest first), update the preferences file:
-   - hide_sections: replace the \"hide_sections:\" line. If form value is empty, write \"hide_sections: (none)\".
-   - timezone: replace the \"timezone:\" line. Normalize city names to IANA (e.g. \"melbourne\" -> \"Australia/Melbourne\", \"new york\" -> \"America/New_York\", \"london\" -> \"Europe/London\"). If form value is empty, leave existing value unchanged.
-   - pause: replace the \"pause_until:\" line. If form says \"stop entirely\" (case-insensitive), write \"pause_until: indefinite\". If form gives a duration like \"4 days\", \"2 weeks\", or \"1 month\", compute (DM-timestamp-date + that-many-days, where 1 week=7 days, 1 month=30 days) and write \"pause_until: YYYY-MM-DD\". If form value is empty, write \"pause_until: (none)\".
-   - feedback: if form value is non-empty, PREPEND a new entry to the feedback section (under the \"## Feedback rules\" header) in this exact format on its own line:
-     - YYYY-MM-DD HH:MM — \"<feedback text, single line; newlines replaced with spaces>\"
-     If the only line currently under \"## Feedback rules\" is \"(none yet)\", remove that line before adding the new entry.
-4. Output ONLY the complete updated preferences file content. No preamble, no commentary, no fenced code blocks. The first line of your output MUST be \"# Morning Briefing — Personal Preferences\".
-
-If no new form submissions are found, output the existing preferences file content UNCHANGED."
-
-  tmp_prefs=$(mktemp)
-  if /usr/bin/aifx agent run claude -p "$sync_prompt" > "$tmp_prefs" 2>&1; then
-    # Tolerant extraction: find the header line anywhere in the output and strip
-    # any preamble before it (Claude often adds "Here's the updated file:" etc.)
-    if grep -q '^# Morning Briefing — Personal Preferences' "$tmp_prefs"; then
-      awk '/^# Morning Briefing — Personal Preferences/{found=1} found{print}' "$tmp_prefs" > "$tmp_prefs.clean"
-      mv "$tmp_prefs.clean" "$PREFS_FILE"
-      date -u +%Y-%m-%dT%H:%M:%SZ > "$LAST_SYNC_FILE"
-      echo "Prefs synced from Slack"
-    else
-      echo "WARN: prefs sync output missing expected header — keeping existing prefs file"
-      echo "--- raw Claude output (first 100 lines) ---"
-      head -100 "$tmp_prefs"
-      echo "--- end raw output ---"
-      rm -f "$tmp_prefs"
-    fi
-  else
-    echo "WARN: prefs sync Claude call exited non-zero"
-    echo "--- raw output (first 100 lines) ---"
-    head -100 "$tmp_prefs"
-    echo "--- end raw output ---"
-    rm -f "$tmp_prefs"
-  fi
-}
-
-# ───────────────────────────────────────────────────────────
-# Pause check: read pause_until from prefs file. Returns 0 (proceed) or 1 (skip).
-# ───────────────────────────────────────────────────────────
-check_pause_active() {
-  local pause_until today
-  pause_until=$(grep '^pause_until:' "$PREFS_FILE" 2>/dev/null | head -1 | sed 's/^pause_until:[[:space:]]*//' | tr -d '[:space:]')
-
-  if [ "$pause_until" = "indefinite" ]; then
-    echo "PAUSED indefinitely (user chose 'stop entirely')"
-    return 1
-  fi
-  if [ -z "$pause_until" ] || [ "$pause_until" = "(none)" ]; then
-    return 0
-  fi
-  today=$(date -u +%Y-%m-%d)
-  if [[ "$today" < "$pause_until" ]]; then
-    echo "PAUSED until $pause_until"
-    return 1
-  fi
-  return 0
 }
 
 # ───────────────────────────────────────────────────────────
@@ -302,27 +224,16 @@ RECIPIENT_FIRST_NAME="${RECIPIENT_FIRST_NAME:-${RECIPIENT_NAME%% *}}"
 RECIPIENT_USERNAME="${RECIPIENT_USERNAME:-${RECIPIENT_EMAIL%%@*}}"
 
 TMP_BODY=$(mktemp)
-trap 'rm -f "$TMP_BODY"' EXIT
+TMP_BRIEFING=$(mktemp)
+trap 'rm -f "$TMP_BODY" "$TMP_BRIEFING"' EXIT
 
 SUBJECT="The Day Ahead — $(TZ=Australia/Sydney date '+%a %d %b')"
 
 {
   echo "=== $(date -Iseconds) start ==="
 
-  echo "=== syncing prefs from Slack ==="
-  sync_prefs_from_slack
-
-  echo "=== preferences file content ==="
-  cat "$PREFS_FILE"
-
-  if ! check_pause_active; then
-    echo "=== skipping briefing (pause active) ==="
-    echo "=== $(date -Iseconds) exit=0 (paused) ==="
-    exit 0
-  fi
-
-  # Inject prefs file content into prompt via {{PREFERENCES}} placeholder, then
-  # apply per-user variable substitutions.
+  # Inject current prefs file into {{PREFERENCES}} placeholder, then substitute
+  # per-user variables. awk handles the multi-line file injection cleanly.
   PREFS_CONTENT=$(cat "$PREFS_FILE")
   PROMPT=$(awk -v prefs="$PREFS_CONTENT" '
     index($0, "{{PREFERENCES}}") {
@@ -335,16 +246,44 @@ SUBJECT="The Day Ahead — $(TZ=Australia/Sydney date '+%a %d %b')"
     -e "s|{{RECIPIENT_FIRST_NAME}}|$RECIPIENT_FIRST_NAME|g" \
     -e "s|{{RECIPIENT_USERNAME}}|$RECIPIENT_USERNAME|g")
 
-  echo "=== generating briefing ==="
+  echo "=== running Claude (briefing + prefs snapshot) ==="
   /usr/bin/aifx agent run claude -p "$PROMPT" > "$TMP_BODY"
-  echo "=== briefing body ($(wc -c < "$TMP_BODY") bytes) ==="
+  echo "=== full Claude output ($(wc -c < "$TMP_BODY") bytes) ==="
   cat "$TMP_BODY"
+
+  # Extract PREFS_SNAPSHOT block and write to prefs file
+  if grep -q '^<<<PREFS_SNAPSHOT_START>>>$' "$TMP_BODY" && grep -q '^<<<PREFS_SNAPSHOT_END>>>$' "$TMP_BODY"; then
+    awk '
+      /^<<<PREFS_SNAPSHOT_START>>>$/ { in_snap=1; next }
+      /^<<<PREFS_SNAPSHOT_END>>>$/   { in_snap=0; next }
+      in_snap { print }
+    ' "$TMP_BODY" > "$PREFS_FILE.new"
+    if [ -s "$PREFS_FILE.new" ] && grep -q '^# Morning Briefing — Personal Preferences' "$PREFS_FILE.new"; then
+      mv "$PREFS_FILE.new" "$PREFS_FILE"
+      echo "=== prefs file updated from snapshot ==="
+    else
+      echo "WARN: snapshot extracted but failed validation — keeping existing prefs file"
+      rm -f "$PREFS_FILE.new"
+    fi
+  else
+    echo "WARN: Claude output missing PREFS_SNAPSHOT block — keeping existing prefs file"
+  fi
+
+  # Extract briefing body (everything BEFORE the snapshot start marker)
+  sed '/^<<<PREFS_SNAPSHOT_START>>>$/,$d' "$TMP_BODY" | sed -e :a -e '/^$/{$d;N;ba' -e '}' > "$TMP_BRIEFING"
+
+  # Pause check: if briefing starts with PAUSED_BRIEFING, don't post webhook
+  if head -1 "$TMP_BRIEFING" | grep -q '^PAUSED_BRIEFING'; then
+    echo "=== paused — skipping webhook post ==="
+    echo "=== $(date -Iseconds) exit=0 (paused) ==="
+    exit 0
+  fi
 
   echo "=== posting to webhook ==="
   PAYLOAD=$(jq -n \
     --arg email "$RECIPIENT_EMAIL" \
     --arg subj  "$SUBJECT" \
-    --rawfile body "$TMP_BODY" \
+    --rawfile body "$TMP_BRIEFING" \
     '{recipient_email: $email, subject: $subj, body: $body}')
   RESPONSE=$(curl -s -X POST -H 'Content-Type: application/json' \
     -d "$PAYLOAD" "$WEBHOOK_URL")
