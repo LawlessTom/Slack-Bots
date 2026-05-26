@@ -9,18 +9,17 @@
 #
 # It will:
 #   1. Verify prereqs (aifx, jq, git)
-#   2. Verify GitHub SSH works (fails fast with fix instructions if not)
-#   3. Clone the kit + run install.sh
-#   4. Prompt you (interactively) for the shared webhook URL
-#   5. Auto-fill your email and write the config
-#   6. Launch Claude so you can OAuth google-mcp + slack-mcp (2 browser clicks)
-#   7. Smoke-test the briefing — you should get a Slack DM within ~30s
+#   2. Clone the kit + run install.sh (HTTPS, no GitHub auth needed — public repo)
+#   3. Auto-fill your email (FTE or ext contractor)
+#   4. Embed the shared webhook URL
+#   5. Launch Claude so you can OAuth google-mcp + slack-mcp (2 browser clicks)
+#   6. Smoke-test the briefing — you should get a Slack DM within ~30s
 #
 # Total time: ~3 min. After this, cron fires daily at 8am Sydney time.
 
 set -euo pipefail
 
-KIT_REPO="git@github.com:LawlessTom/Slack-Bots.git"
+KIT_REPO="https://github.com/LawlessTom/Slack-Bots.git"
 KIT_DIR="$HOME/morning-briefing-kit"
 ENV_FILE="$HOME/.config/morning-briefing.env"
 
@@ -44,7 +43,7 @@ echo ""
 # ───────────────────────────────────────────────────────────
 # 1. Prereqs
 # ───────────────────────────────────────────────────────────
-bold "[1/6] Checking prerequisites..."
+bold "[1/5] Checking prerequisites..."
 for cmd in aifx git curl; do
   if ! command -v "$cmd" >/dev/null; then
     red "  ✗ '$cmd' not found. This script must run on an Uber devpod."
@@ -58,38 +57,9 @@ fi
 green "  ✓ aifx, git, curl, jq all present"
 
 # ───────────────────────────────────────────────────────────
-# 2. GitHub SSH
+# 2. Clone kit (HTTPS — public repo, no auth needed)
 # ───────────────────────────────────────────────────────────
-bold "[2/6] Verifying GitHub SSH access..."
-# `ssh -T git@github.com` always exits 1 (GitHub denies shell), so capture
-# output explicitly and grep on that rather than relying on the pipeline's
-# exit code (which pipefail would treat as failure).
-# `</dev/null` is critical when this script is run via `curl | bash` — ssh
-# otherwise inherits bash's stdin (the pipe) and consumes the rest of the
-# script, killing the process silently.
-SSH_OUT=$(ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -T git@github.com </dev/null 2>&1 || true)
-if ! echo "$SSH_OUT" | grep -q "successfully authenticated"; then
-  red "  ✗ GitHub SSH not working from this devpod."
-  echo ""
-  yellow "  Fix on your Mac (not the devpod):"
-  echo "    1. open https://accounts.uberinternal.com/access_provisioning/user_access"
-  echo "       → link your GitHub username if not already"
-  echo "    2. ussh --ussh-replace --ussh-setup-github"
-  echo "    3. open https://github.com/settings/ssh/new"
-  echo "       → paste the key ussh copied to clipboard, name it 'uber-laptop'"
-  echo "    4. ussh   # refresh cert"
-  echo "    5. ssh git@github.com   # should say 'Hi <user>!'"
-  echo ""
-  yellow "  Then reconnect to your devpod (exit + ssh back in to refresh agent forwarding)"
-  yellow "  and re-run this bootstrap."
-  exit 1
-fi
-green "  ✓ GitHub SSH works"
-
-# ───────────────────────────────────────────────────────────
-# 3. Clone kit
-# ───────────────────────────────────────────────────────────
-bold "[3/6] Cloning the kit..."
+bold "[2/5] Cloning the kit..."
 if [ -d "$KIT_DIR/.git" ]; then
   echo "  Kit already exists at $KIT_DIR — pulling latest..."
   (cd "$KIT_DIR" && git pull --rebase --quiet)
@@ -99,17 +69,17 @@ fi
 green "  ✓ Kit at $KIT_DIR"
 
 # ───────────────────────────────────────────────────────────
-# 4. Run installer
+# 3. Run installer
 # ───────────────────────────────────────────────────────────
-bold "[4/6] Running installer..."
+bold "[3/5] Running installer..."
 chmod +x "$KIT_DIR/install.sh"
 "$KIT_DIR/install.sh"
 
 # ───────────────────────────────────────────────────────────
-# 5. Collect config interactively
+# 4. Collect config interactively
 # ───────────────────────────────────────────────────────────
 echo ""
-bold "[5/6] Configuring..."
+bold "[4/5] Configuring..."
 
 # Determine email domain (FTE vs ext contractor)
 echo ""
@@ -145,10 +115,10 @@ chmod 600 "$ENV_FILE"
 green "  ✓ Config written ($ENV_FILE, chmod 600)"
 
 # ───────────────────────────────────────────────────────────
-# 6. OAuth + smoke test
+# 5. OAuth + smoke test
 # ───────────────────────────────────────────────────────────
 echo ""
-bold "[6/6] OAuth + smoke test"
+bold "[5/5] OAuth + smoke test"
 echo ""
 yellow "  Claude will open in a moment. Run these THREE commands at the ❯ prompt:"
 echo ""

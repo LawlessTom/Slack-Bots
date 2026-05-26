@@ -52,8 +52,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/LawlessTom/Slack-Bots/main/b
 ```
 
 It will:
-- Verify your prereqs (aifx, jq, GitHub SSH)
-- Clone the kit, run the installer
+- Verify your prereqs (aifx, jq, git)
+- Clone the kit (HTTPS, no auth needed — public repo), run the installer
 - Ask one question (FTE or external contractor — picks `@uber.com` vs `@ext.uber.com`)
 - Launch Claude so you can OAuth google-mcp + slack-mcp (two browser clicks)
 - Run a smoke test — you should get a Slack DM within ~30s
@@ -61,7 +61,6 @@ It will:
 
 **Total time: ~3 minutes.** Before you run it, have:
 - An **Uber devpod** ready (provision via [go/devpod](https://devpod.uberinternal.com), `base` flavor is fine)
-- **GitHub SSH** working from the devpod — if `ssh git@github.com` doesn't say "Hi <your-user>!", see [GitHub SSH setup](#github-ssh-setup-one-time-on-your-mac) below
 - A **Slack profile email** ending in `@ext.uber.com` or `@uber.com`
 
 If you'd rather see every step explicitly, the [manual install path](#manual-install-on-your-devpod) below does the same thing in pieces.
@@ -70,53 +69,12 @@ If you'd rather see every step explicitly, the [manual install path](#manual-ins
 
 1. **An Uber devpod.** Most engineers already have one. If not, provision via [go/devpod](https://devpod.uberinternal.com) — `base` flavor is fine.
 
-2. **GitHub SSH access from your devpod.** A fresh devpod can't `git clone` from github.com until you set this up. ~5 min one-time. See "GitHub SSH setup" below.
-
-3. **The shared webhook URL.** It's a secret, not committed to this repo. DM Thomas Lawless (`@tlawle1`) for it.
-
-4. **A Slack profile email of `@ext.uber.com` or `@uber.com`** — the workflow looks you up by this email to send the DM.
-
-## GitHub SSH setup (one-time, on your Mac)
-
-If `ssh git@github.com` from your devpod returns `Hi <your-github-user>!`, skip this section.
-
-On your **Mac** (not the devpod — ssh agent forwarding carries the identity through):
-
-```bash
-# 1. Verify your GitHub account is linked to Uber
-open https://accounts.uberinternal.com/access_provisioning/user_access
-# → "Add or update your GitHub username" if not already linked
-
-# 2. Generate a fresh GitHub SSH key via ussh
-ussh --ussh-replace --ussh-setup-github
-
-# 3. Add the public key to GitHub (ussh copied it to clipboard)
-open https://github.com/settings/ssh/new
-# Paste key, name it "uber-laptop", click Add SSH key
-
-# 4. Refresh ussh cert
-ussh
-
-# 5. Verify from Mac
-ssh git@github.com
-# Expect: "Hi <your-github-user>!..."
-```
-
-Then reconnect to your devpod (so the fresh ssh-agent forwards):
-
-```bash
-# In your devpod terminal
-exit
-ssh <your-devpod-host>
-ssh git@github.com   # should succeed
-```
-
-Full troubleshooting: [go/DEV101](https://go/DEV101) or `#slack-bots-dev`.
+2. **A Slack profile email of `@ext.uber.com` or `@uber.com`** — the workflow looks you up by this email to send the DM.
 
 ## Manual install (on your devpod)
 
 ```bash
-cd ~ && git clone git@github.com:LawlessTom/Slack-Bots.git morning-briefing-kit
+cd ~ && git clone https://github.com/LawlessTom/Slack-Bots.git morning-briefing-kit
 cd morning-briefing-kit
 chmod +x install.sh
 ./install.sh

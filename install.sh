@@ -266,7 +266,16 @@ SUBJECT="The Day Ahead — $(TZ=Australia/Sydney date '+%a %d %b')"
   fi
 
   # Extract briefing body (everything BEFORE the snapshot start marker)
-  sed '/^<<<PREFS_SNAPSHOT_START>>>$/,$d' "$TMP_BODY" | sed -e :a -e '/^$/{$d;N;ba' -e '}' > "$TMP_BRIEFING"
+  sed '/^<<<PREFS_SNAPSHOT_START>>>$/,$d' "$TMP_BODY" | sed -e :a -e '/^$/{$d;N;ba' -e '}' > "$TMP_BRIEFING.raw"
+
+  # Defensive preamble trim: Claude occasionally narrates before the briefing
+  # despite the prompt rule. Strip anything before the first 🌅 line.
+  if grep -q $'\xf0\x9f\x8c\x85' "$TMP_BRIEFING.raw"; then
+    sed -n $'/\xf0\x9f\x8c\x85/,$p' "$TMP_BRIEFING.raw" > "$TMP_BRIEFING"
+  else
+    cp "$TMP_BRIEFING.raw" "$TMP_BRIEFING"
+  fi
+  rm -f "$TMP_BRIEFING.raw"
 
   # Pause check: if briefing starts with PAUSED_BRIEFING, don't post webhook
   if head -1 "$TMP_BRIEFING" | grep -q '^PAUSED_BRIEFING'; then
