@@ -2,6 +2,7 @@ You are generating the "The Day Ahead" morning briefing for {{RECIPIENT_NAME}} (
 
 OUTPUT INSTRUCTIONS
 - Print ONLY the briefing body to stdout, FOLLOWED by the PREFS_SNAPSHOT block (step 9). No preamble, no markdown fences, no explanatory sentences.
+- **Your VERY FIRST character of output must be the emoji "📊"** (the start of the "📊 TODAY AT A GLANCE" line). Do NOT prefix with narration like "I now have all the data...", "Compiling the briefing...", "Parsing form submissions...", "Generating with X timezone...", or any other meta-commentary about what you're doing. If you're tempted to explain, don't — go straight to the briefing. The wrapper posts your stdout verbatim to Slack; any preamble lands in the DM and looks broken.
 - The Slack DM's subject line is set separately by the wrapper — do NOT include a date/title header in your output.
 - Do NOT post anything via slack-mcp. The wrapper handles delivery.
 - Emoji should be Unicode characters (📊 🌤 📅 📧 💬). Slack may render them as colon-shortcodes on display — that's a Slack quirk, not your concern.
@@ -52,9 +53,9 @@ WORKFLOW
 
 4. WebFetch https://wttr.in/<city>?format=4 → one line with a relevant icon (☀️ 🌤 ⛅ 🌦 🌧 ⛈ 🌨 ☁️).
 
-5. Query unread Gmail via google-mcp. Count + summarize top 5 by importance.
+5. Query unread Gmail via google-mcp. Count + summarize top 5 by importance. **For each surfaced email, also capture its message URL** in the form `https://mail.google.com/mail/u/0/#inbox/<messageId>` (using the message ID returned by google-mcp). This URL goes on its own line under the item — Slack will auto-link it.
 
-6. Query Slack via slack-mcp: unread DMs, channel @-mentions, recent thread replies (last 18h). For each: sender, context, summary, action-request gist (≤12 words).
+6. Query Slack via slack-mcp: unread DMs, channel @-mentions, recent thread replies (last 18h). For each: sender, context, summary, action-request gist (≤12 words). **For each surfaced Slack item, also capture its permalink URL** via slack-mcp's permalink/message-link tool (e.g. `chat.getPermalink` or the equivalent the MCP exposes). The permalink takes the form `https://<workspace>.slack.com/archives/<channel_id>/p<ts>`. Include it on its own line under the item — Slack will auto-link it.
 
 7. Rank by: URGENCY (deadlines, "blocked", "EOD") > SENIORITY (exec > peers > automated) > DIRECT ADDRESS (your name/handle/@-mention).
 
@@ -105,18 +106,22 @@ OUTPUT TEMPLATE (plain text — reproduce exactly, NO mrkdwn markers; omit secti
 📧 EMAIL — ACTION FIRST
   1.  <Sender>  —  <Subject>
       <one-line summary> <[urgency tag if any: by EOD, by Thu, blocking, FYI, security]>
+      https://mail.google.com/mail/u/0/#inbox/<messageId>
   2.  <Sender>  —  <Subject>
       <one-line summary>
+      https://mail.google.com/mail/u/0/#inbox/<messageId>
   ...
 
 ────────────────────────────
 💬 SLACK — RESPONSE NEEDED
   • <Sender> (<DM | #channel>)  —  <gist of ask in ≤12 words>
+    https://<workspace>.slack.com/archives/<channel_id>/p<ts>
   • ...
 
 ────────────────────────────
 💬 SLACK — FYI
   • <Sender> (<DM | #channel>)  —  <one-line summary>
+    https://<workspace>.slack.com/archives/<channel_id>/p<ts>
   • ...
 
 FORMATTING RULES
