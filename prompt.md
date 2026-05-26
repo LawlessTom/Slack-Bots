@@ -125,6 +125,7 @@ OUTPUT TEMPLATE (plain text — reproduce exactly, NO mrkdwn markers; omit secti
   • ...
 
 FORMATTING RULES
+- Mark each item in EMAIL — ACTION FIRST and SLACK — RESPONSE NEEDED with a leading ❌ to flag it needs action (e.g. "  1.  ❌ <Sender>  —  <Subject>" and "  • ❌ <Sender> (<#channel>)  —  <gist>"). Do NOT add ❌ to EMAIL FYI or SLACK FYI items. Reserve ✅ for items the user has explicitly resolved — never apply it by default. Markers lose meaning if peppered everywhere; be sparing.
 - All times in AEST, formatted HH:MM (24h). Two-space gap before the title for column alignment.
 - UPPERCASE for section headers (already in template).
 - Two-space indentation under each header for items.
