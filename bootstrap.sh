@@ -61,10 +61,23 @@ green "  ✓ aifx, git, curl, jq all present"
 # ───────────────────────────────────────────────────────────
 bold "[2/5] Cloning the kit..."
 if [ -d "$KIT_DIR/.git" ]; then
-  echo "  Kit already exists at $KIT_DIR — pulling latest..."
-  (cd "$KIT_DIR" && git pull --rebase --quiet)
+  echo "  Kit already exists at $KIT_DIR — refreshing..."
+  (
+    cd "$KIT_DIR"
+    # Force remote to HTTPS in case a previous bootstrap used the SSH URL
+    # (SSH pulls silently fail on devpods without GitHub keys).
+    current_remote=$(git remote get-url origin 2>/dev/null || echo "")
+    if [ "$current_remote" != "$KIT_REPO" ]; then
+      echo "  Resetting origin remote: $current_remote → $KIT_REPO"
+      git remote set-url origin "$KIT_REPO"
+    fi
+    if ! git pull --rebase 2>&1 | sed 's/^/    /'; then
+      red "  ✗ git pull failed — kit on disk is stale. Investigate with: cd $KIT_DIR && git status"
+      exit 1
+    fi
+  )
 else
-  git clone --quiet "$KIT_REPO" "$KIT_DIR"
+  git clone "$KIT_REPO" "$KIT_DIR"
 fi
 green "  ✓ Kit at $KIT_DIR"
 

@@ -295,6 +295,14 @@ SUBJECT="The Day Ahead — $(TZ=Australia/Sydney date '+%a %d %b')"
     exit 0
   fi
 
+  # Defensive: if Claude's output is essentially empty, don't deliver an empty DM
+  if [ ! -s "$TMP_BRIEFING" ] || [ "$(wc -c < "$TMP_BRIEFING")" -lt 50 ]; then
+    echo "=== ABORT: briefing body is empty or tiny (<50 chars) — Claude likely failed (missing MCP OAuth?) — skipping webhook ==="
+    echo "Full Claude output was: $(cat "$TMP_BODY")"
+    echo "=== $(date -Iseconds) exit=2 (empty body) ==="
+    exit 2
+  fi
+
   echo "=== posting to webhook ==="
   PAYLOAD=$(jq -n \
     --arg email "$RECIPIENT_EMAIL" \
@@ -313,15 +321,39 @@ echo "  ✓ Wrapper installed at $WRAPPER"
 # ───────────────────────────────────────────────────────────
 # 7. Cron
 # ───────────────────────────────────────────────────────────
-echo "[7/7] Scheduling cron (8am Sydney weekdays)..."
+# Cron daemon on Uber devpods ignores `TZ=` env lines — the schedule is parsed
+# in UTC regardless. We auto-detect the current Sydney→UTC offset and write
+# the UTC equivalent of 8am Sydney weekdays.
+#
+# DST flip: re-run ./install.sh after each Sydney DST transition (early Oct
+# AEST→AEDT, early Apr AEDT→AEST). The detection below picks the right cron
+# line for whichever offset is in effect at install time.
+SYD_DATE=$(TZ=Australia/Sydney date +%Y-%m-%d)
+UTC_HOUR=$(date -u -d "TZ=\"Australia/Sydney\" $SYD_DATE 08:00:00" +%-H)
+SYD_DOW=$(TZ=Australia/Sydney date -d "$SYD_DATE 08:00:00" +%u)
+UTC_DOW=$(date -u -d "TZ=\"Australia/Sydney\" $SYD_DATE 08:00:00" +%u)
+if [ "$UTC_DOW" -ne "$SYD_DOW" ]; then
+  CRON_DAYS="0-4"  # Sun-Thu UTC = Mon-Fri Sydney
+else
+  CRON_DAYS="1-5"
+fi
+CRON_SCHED="0 $UTC_HOUR * * $CRON_DAYS"
+
+echo "[7/7] Scheduling cron ($CRON_SCHED UTC = 8am Sydney weekdays)..."
 CRON_CURRENT=$(crontab -l 2>/dev/null || true)
-CRON_FILTERED=$(echo "$CRON_CURRENT" | grep -v 'run-morning-briefing.sh' | grep -v '^TZ=Australia/Sydney$' || true)
+CRON_FILTERED=$(echo "$CRON_CURRENT" \
+  | grep -v 'run-morning-briefing.sh' \
+  | grep -v '^TZ=Australia/Sydney$' \
+  | grep -v '^# 8am Sydney' \
+  | grep -v '^# TZ=Australia/Sydney is ignored' \
+  | grep -v '^# When Sydney flips' \
+  || true)
 {
   echo "$CRON_FILTERED"
-  echo 'TZ=Australia/Sydney'
-  echo "0 8 * * 1-5 $WRAPPER"
+  echo "# 8am Sydney weekdays (UTC-hardcoded; re-run install.sh after Sydney DST flips)"
+  echo "$CRON_SCHED $WRAPPER"
 } | grep -v '^$' | crontab -
-echo "  ✓ Cron installed: 0 8 * * 1-5 (Sydney)"
+echo "  ✓ Cron installed: $CRON_SCHED $WRAPPER"
 
 # ───────────────────────────────────────────────────────────
 # Env stub
