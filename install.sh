@@ -8,12 +8,13 @@
 #   ./install.sh
 #
 # What it does:
-#   1. Verifies prereqs (aifx, jq, claude)
-#   2. Installs/updates Claude Code, google-mcp, slack-mcp
-#   3. Writes Claude permissions allowlist (~/.claude/settings.json)
-#   4. Drops the wrapper script (~/bin/run-morning-briefing.sh) and prompt
-#   5. Schedules cron (8am Sydney time, weekdays)
-#   6. Stubs a config file (~/.config/morning-briefing.env) for the user to fill in
+#   1. Prompts for timezone + fire time (defaults: Australia/Sydney, 08:00)
+#   2. Verifies prereqs (aifx, jq, claude)
+#   3. Installs/updates Claude Code, google-mcp, slack-mcp
+#   4. Writes Claude permissions allowlist (~/.claude/settings.json)
+#   5. Drops the wrapper script (~/bin/run-morning-briefing.sh) and prompt
+#   6. Schedules cron at chosen time, weekdays (UTC-hardcoded; DST flip = re-run)
+#   7. Stubs a config file (~/.config/morning-briefing.env) for the user to fill in
 #
 # What it does NOT do (user must complete manually):
 #   - OAuth Google + Slack MCPs (run `aifx agent run claude` interactively, fire one
@@ -38,6 +39,51 @@ SETTINGS_FILE="$HOME/.claude/settings.json"
 echo "═══════════════════════════════════════════════"
 echo "  Morning Briefing — installer"
 echo "═══════════════════════════════════════════════"
+echo ""
+
+# ───────────────────────────────────────────────────────────
+# 0. User config: timezone + fire time
+# ───────────────────────────────────────────────────────────
+# Read previous choices (if any) to use as defaults on re-run.
+DEFAULT_TZ="Australia/Sydney"
+DEFAULT_TIME="08:00"
+if [ -f "$ENV_FILE" ]; then
+  EXISTING_TZ=$(grep -E '^USER_TZ=' "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"' || true)
+  EXISTING_TIME=$(grep -E '^FIRE_TIME=' "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"' || true)
+  DEFAULT_TZ="${EXISTING_TZ:-$DEFAULT_TZ}"
+  DEFAULT_TIME="${EXISTING_TIME:-$DEFAULT_TIME}"
+fi
+
+if [ -t 0 ]; then
+  read -rp "Timezone for briefing schedule [$DEFAULT_TZ]: " INPUT_TZ
+  USER_TZ="${INPUT_TZ:-$DEFAULT_TZ}"
+  read -rp "Fire time HH:MM 24-hour [$DEFAULT_TIME]: " INPUT_TIME
+  FIRE_TIME="${INPUT_TIME:-$DEFAULT_TIME}"
+else
+  USER_TZ="$DEFAULT_TZ"
+  FIRE_TIME="$DEFAULT_TIME"
+  echo "  (non-interactive — using defaults: $USER_TZ $FIRE_TIME)"
+fi
+
+# Validate timezone
+if ! TZ="$USER_TZ" date >/dev/null 2>&1; then
+  echo "  ✗ Invalid timezone: '$USER_TZ'"
+  echo "    Examples: Australia/Sydney, Australia/Perth, America/New_York, Europe/London"
+  exit 1
+fi
+
+# Validate fire time HH:MM (24-hour, leading zero optional on hour)
+if ! [[ "$FIRE_TIME" =~ ^([01]?[0-9]|2[0-3]):[0-5][0-9]$ ]]; then
+  echo "  ✗ Invalid fire time: '$FIRE_TIME' (expected HH:MM, 24-hour)"
+  exit 1
+fi
+
+# Normalize to HH:MM
+FIRE_HOUR=$(echo "$FIRE_TIME" | cut -d: -f1)
+FIRE_MIN=$(echo "$FIRE_TIME" | cut -d: -f2)
+FIRE_TIME=$(printf "%02d:%02d" "$FIRE_HOUR" "$FIRE_MIN")
+
+echo "  ✓ Schedule: $FIRE_TIME $USER_TZ, Mon-Fri"
 echo ""
 
 # ───────────────────────────────────────────────────────────
@@ -322,35 +368,41 @@ echo "  ✓ Wrapper installed at $WRAPPER"
 # 7. Cron
 # ───────────────────────────────────────────────────────────
 # Cron daemon on Uber devpods ignores `TZ=` env lines — the schedule is parsed
-# in UTC regardless. We auto-detect the current Sydney→UTC offset and write
-# the UTC equivalent of 8am Sydney weekdays.
+# in UTC regardless. Compute the UTC equivalent of $FIRE_TIME $USER_TZ for the
+# current DST state and write that.
 #
-# DST flip: re-run ./install.sh after each Sydney DST transition (early Oct
-# AEST→AEDT, early Apr AEDT→AEST). The detection below picks the right cron
-# line for whichever offset is in effect at install time.
-SYD_DATE=$(TZ=Australia/Sydney date +%Y-%m-%d)
-UTC_HOUR=$(date -u -d "TZ=\"Australia/Sydney\" $SYD_DATE 08:00:00" +%-H)
-SYD_DOW=$(TZ=Australia/Sydney date -d "$SYD_DATE 08:00:00" +%u)
-UTC_DOW=$(date -u -d "TZ=\"Australia/Sydney\" $SYD_DATE 08:00:00" +%u)
-if [ "$UTC_DOW" -ne "$SYD_DOW" ]; then
-  CRON_DAYS="0-4"  # Sun-Thu UTC = Mon-Fri Sydney
-else
-  CRON_DAYS="1-5"
-fi
-CRON_SCHED="0 $UTC_HOUR * * $CRON_DAYS"
+# DST flip: re-run ./install.sh after each local DST transition.
+USER_DATE=$(TZ="$USER_TZ" date +%Y-%m-%d)
+UTC_HOUR=$(date -u -d "TZ=\"$USER_TZ\" $USER_DATE $FIRE_TIME:00" +%-H)
+UTC_MIN=$(date -u -d "TZ=\"$USER_TZ\" $USER_DATE $FIRE_TIME:00" +%-M)
+USER_DOW=$(TZ="$USER_TZ" date -d "$USER_DATE $FIRE_TIME:00" +%u)
+UTC_DOW=$(date -u -d "TZ=\"$USER_TZ\" $USER_DATE $FIRE_TIME:00" +%u)
 
-echo "[7/7] Scheduling cron ($CRON_SCHED UTC = 8am Sydney weekdays)..."
+# Day-of-week shift. ISO DoW 1=Mon..7=Sun. Normalize the diff to ±1 around 0.
+DOW_DIFF=$((UTC_DOW - USER_DOW))
+if [ "$DOW_DIFF" -lt -1 ]; then DOW_DIFF=$((DOW_DIFF + 7)); fi
+if [ "$DOW_DIFF" -gt  1 ]; then DOW_DIFF=$((DOW_DIFF - 7)); fi
+
+if [ "$DOW_DIFF" -eq -1 ]; then
+  CRON_DAYS="0-4"   # UTC one day behind user (e.g., Sydney 8am AEST = prev-day 22:00 UTC)
+elif [ "$DOW_DIFF" -eq 1 ]; then
+  CRON_DAYS="2-6"   # UTC one day ahead of user (rare; late-evening fires in US west)
+else
+  CRON_DAYS="1-5"   # Same UTC day
+fi
+
+CRON_SCHED="$UTC_MIN $UTC_HOUR * * $CRON_DAYS"
+
+echo "[7/7] Scheduling cron ($CRON_SCHED UTC = $FIRE_TIME $USER_TZ weekdays)..."
 CRON_CURRENT=$(crontab -l 2>/dev/null || true)
 CRON_FILTERED=$(echo "$CRON_CURRENT" \
   | grep -v 'run-morning-briefing.sh' \
+  | grep -v 'UTC-hardcoded' \
   | grep -v '^TZ=Australia/Sydney$' \
-  | grep -v '^#.*Sydney.*UTC' \
-  | grep -v '^# TZ=Australia/Sydney is ignored' \
-  | grep -v '^# When Sydney flips' \
   || true)
 {
   echo "$CRON_FILTERED"
-  echo "# 8am Sydney weekdays (UTC-hardcoded; re-run install.sh after Sydney DST flips)"
+  echo "# $FIRE_TIME $USER_TZ weekdays (UTC-hardcoded; re-run install.sh after DST flips)"
   echo "$CRON_SCHED $WRAPPER"
 } | grep -v '^$' | crontab -
 echo "  ✓ Cron installed: $CRON_SCHED $WRAPPER"
@@ -390,6 +442,43 @@ else
 fi
 
 # ───────────────────────────────────────────────────────────
+# Persist USER_TZ / FIRE_TIME so re-runs default to current choices,
+# and the value is recorded alongside other config.
+# ───────────────────────────────────────────────────────────
+for kv in "USER_TZ=$USER_TZ" "FIRE_TIME=$FIRE_TIME"; do
+  key="${kv%%=*}"
+  if grep -q "^$key=" "$ENV_FILE"; then
+    sed -i "s|^$key=.*|$kv|" "$ENV_FILE"
+  else
+    echo "$kv" >> "$ENV_FILE"
+  fi
+done
+
+# ───────────────────────────────────────────────────────────
+# Seed/update prefs file's timezone so briefing DISPLAY times match
+# the schedule timezone. (Wrapper's init_prefs_file is a no-op if file exists.)
+# ───────────────────────────────────────────────────────────
+PREFS_FILE="$CONFIG_DIR/morning-briefing.preferences.md"
+if [ -f "$PREFS_FILE" ]; then
+  sed -i "s|^timezone:.*|timezone: $USER_TZ|" "$PREFS_FILE"
+else
+  cat > "$PREFS_FILE" <<PREFS_EOF
+# Morning Briefing — Personal Preferences
+# Hand-editable. Auto-synced from "Tweaks and Settings" form submissions in Slack.
+# Persists across kit updates.
+
+## Settings
+hide_sections: (none)
+timezone: $USER_TZ
+pause_until: (none)
+last_synced_at: 1970-01-01T00:00:00Z
+
+## Feedback rules (newest first; Claude follows these alongside the central template)
+(none yet)
+PREFS_EOF
+fi
+
+# ───────────────────────────────────────────────────────────
 # Next steps
 # ───────────────────────────────────────────────────────────
 cat <<NEXTSTEPS
@@ -421,7 +510,7 @@ cat <<NEXTSTEPS
 
 ═══════════════════════════════════════════════
 
-Cron runs daily at 8:00 Sydney time, Mon-Fri.
+Cron runs $FIRE_TIME $USER_TZ, Mon-Fri.
 Logs: $LOG_DIR/morning-briefing-YYYYMMDD.log
 Edit cron with: crontab -e
 Uninstall guide: see README.md
