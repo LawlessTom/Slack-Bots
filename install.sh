@@ -54,34 +54,50 @@ if [ -f "$ENV_FILE" ]; then
   DEFAULT_TIME="${EXISTING_TIME:-$DEFAULT_TIME}"
 fi
 
+validate_tz() {
+  [ -n "$1" ] && [ -f "/usr/share/zoneinfo/$1" ]
+}
+
+# Accepts "HH:MM" (08:00), or natural forms parsable by `date -d` like
+# "8am", "7:30pm", "noon", "midnight". Echoes normalized HH:MM on success.
+parse_time() {
+  local input="$1"
+  if [[ "$input" =~ ^([01]?[0-9]|2[0-3]):[0-5][0-9]$ ]]; then
+    local h="${input%%:*}" m="${input##*:}"
+    printf "%02d:%02d" "$((10#$h))" "$((10#$m))"
+    return 0
+  fi
+  local parsed
+  if parsed=$(date -d "$input" +%H:%M 2>/dev/null) && [[ "$parsed" =~ ^[0-9]{2}:[0-9]{2}$ ]]; then
+    echo "$parsed"
+    return 0
+  fi
+  return 1
+}
+
 if [ -t 0 ]; then
-  read -rp "Timezone for briefing schedule [$DEFAULT_TZ]: " INPUT_TZ
-  USER_TZ="${INPUT_TZ:-$DEFAULT_TZ}"
-  read -rp "Fire time HH:MM 24-hour [$DEFAULT_TIME]: " INPUT_TIME
-  FIRE_TIME="${INPUT_TIME:-$DEFAULT_TIME}"
+  while true; do
+    read -rp "Timezone for briefing schedule [$DEFAULT_TZ]: " INPUT_TZ
+    USER_TZ="${INPUT_TZ:-$DEFAULT_TZ}"
+    if validate_tz "$USER_TZ"; then break; fi
+    echo "  ✗ Unknown timezone: '$USER_TZ'"
+    echo "    Examples: Australia/Sydney, Australia/Perth, America/New_York, Europe/London, UTC"
+    echo "    Full list: ls /usr/share/zoneinfo  (continent dirs contain the cities)"
+  done
+
+  while true; do
+    read -rp "Fire time [$DEFAULT_TIME]: " INPUT_TIME
+    INPUT_TIME="${INPUT_TIME:-$DEFAULT_TIME}"
+    if FIRE_TIME=$(parse_time "$INPUT_TIME"); then break; fi
+    echo "  ✗ Couldn't parse '$INPUT_TIME'. Try: 08:00, 8am, 7:30pm, or 8"
+  done
 else
   USER_TZ="$DEFAULT_TZ"
   FIRE_TIME="$DEFAULT_TIME"
   echo "  (non-interactive — using defaults: $USER_TZ $FIRE_TIME)"
+  validate_tz "$USER_TZ" || { echo "  ✗ Invalid default timezone '$USER_TZ'"; exit 1; }
+  FIRE_TIME=$(parse_time "$FIRE_TIME") || { echo "  ✗ Invalid default fire time"; exit 1; }
 fi
-
-# Validate timezone
-if ! TZ="$USER_TZ" date >/dev/null 2>&1; then
-  echo "  ✗ Invalid timezone: '$USER_TZ'"
-  echo "    Examples: Australia/Sydney, Australia/Perth, America/New_York, Europe/London"
-  exit 1
-fi
-
-# Validate fire time HH:MM (24-hour, leading zero optional on hour)
-if ! [[ "$FIRE_TIME" =~ ^([01]?[0-9]|2[0-3]):[0-5][0-9]$ ]]; then
-  echo "  ✗ Invalid fire time: '$FIRE_TIME' (expected HH:MM, 24-hour)"
-  exit 1
-fi
-
-# Normalize to HH:MM
-FIRE_HOUR=$(echo "$FIRE_TIME" | cut -d: -f1)
-FIRE_MIN=$(echo "$FIRE_TIME" | cut -d: -f2)
-FIRE_TIME=$(printf "%02d:%02d" "$FIRE_HOUR" "$FIRE_MIN")
 
 echo "  ✓ Schedule: $FIRE_TIME $USER_TZ, Mon-Fri"
 echo ""
