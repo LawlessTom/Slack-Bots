@@ -344,7 +344,7 @@ CRON_CURRENT=$(crontab -l 2>/dev/null || true)
 CRON_FILTERED=$(echo "$CRON_CURRENT" \
   | grep -v 'run-morning-briefing.sh' \
   | grep -v '^TZ=Australia/Sydney$' \
-  | grep -v '^# 8am Sydney' \
+  | grep -v '^#.*Sydney.*UTC' \
   | grep -v '^# TZ=Australia/Sydney is ignored' \
   | grep -v '^# When Sydney flips' \
   || true)
