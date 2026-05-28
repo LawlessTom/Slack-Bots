@@ -228,6 +228,11 @@ set -euo pipefail
 cd "$HOME"
 export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
 
+# Cron skips /etc/profile.d, so SSH_AUTH_SOCK is unset under cron and
+# `aifx` fails with "no valid uSSH certificate found". Point it at the
+# devpod-maintained agent symlink (same eval the system profile.d does).
+eval "$(/usr/local/bin/devpod-ssh-auth-sock)"
+
 # Load personal config
 source "$HOME/.config/morning-briefing.env"
 
