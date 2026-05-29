@@ -1,6 +1,7 @@
 #!/bin/bash
 # Morning Briefing — wrapper invoked by cron.
 # Generates the briefing body via Claude+MCPs, then POSTs to the Slack webhook.
+# (Pressure-test marker — see commit msg; safe to remove on next functional change.)
 #
 # Self-update behavior:
 #   - On every run, the wrapper does `git pull` in $KIT_DIR and refreshes:
