@@ -36,7 +36,6 @@ LOG_FILE="$LOG_DIR/morning-briefing-$(date +%Y%m%d).log"
 PROMPT_FILE="$HOME/.local/share/morning-briefing/prompt.md"
 PROMPT_BACKUP="$PROMPT_FILE.bak"
 PREFS_FILE="$HOME/.config/morning-briefing.preferences.md"
-LAST_SYNC_FILE="$HOME/.config/morning-briefing.last-sync"
 
 # ───────────────────────────────────────────────────────────
 # Self-update: pull kit, refresh prompt + wrapper, re-exec if wrapper changed
@@ -161,6 +160,7 @@ TMP_BRIEFING=$(mktemp)
 TMP_STDERR=$(mktemp)
 
 # Telemetry state — read by EXIT trap. Updated as the run progresses.
+# shellcheck disable=SC2034  # RUN_START referenced inside single-quoted trap
 RUN_START=$(date +%s)
 CLAUDE_DURATION=0
 CLAUDE_STDOUT_BYTES=0
@@ -185,6 +185,7 @@ SUBJECT="The Day Ahead — $(TZ=Australia/Sydney date '+%a %d %b')"
 
   # Inside-block ERR trap: if any command exits non-zero under `set -e`,
   # log exit code + line + the failing command BEFORE the script dies.
+  # shellcheck disable=SC2154  # rc is assigned at trap entry inside the single-quoted body
   trap 'rc=$?; echo "!!! ERR trap: exit=$rc line=$LINENO cmd=[$BASH_COMMAND]"' ERR
 
   # ─── Preflight diagnostics ───
