@@ -325,5 +325,10 @@ SUBJECT="The Day Ahead — $(TZ=Australia/Sydney date '+%a %d %b')"
     echo "=== $(date -Iseconds) exit=4 (webhook failed) ==="
     exit 4
   fi
+  if ! printf '%s' "$RESPONSE_BODY" | grep -q '"ok"[[:space:]]*:[[:space:]]*true'; then
+    echo "=== WEBHOOK ACCEPTED BUT BODY DOES NOT CONFIRM SUCCESS — body=$RESPONSE_BODY ==="
+    echo "=== $(date -Iseconds) exit=4 (webhook semantic failure) ==="
+    exit 4
+  fi
   echo "=== $(date -Iseconds) exit=0 ==="
 } >> "$LOG_FILE" 2>&1
