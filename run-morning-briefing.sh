@@ -79,6 +79,50 @@ update_from_kit() {
 }
 
 # ───────────────────────────────────────────────────────────
+# Telemetry: anonymized per-fire health ping
+#   - No-op if TELEMETRY_URL not set in env file
+#   - user_hash = sha256(RECIPIENT_EMAIL)[0:8] — stable per user, no PII
+#   - Emitted exactly once per run via EXIT trap (or explicit calls)
+#   - Failures are non-fatal: bad telemetry doesn't fail the briefing
+# ───────────────────────────────────────────────────────────
+TELEMETRY_EMITTED=0
+emit_telemetry() {
+  [ "$TELEMETRY_EMITTED" -eq 1 ] && return 0
+  TELEMETRY_EMITTED=1
+  [ -z "${TELEMETRY_URL:-}" ] && return 0
+  local exit_code="${1:-0}"
+  local duration="${2:-0}"
+  local stdout_bytes="${3:-0}"
+  local http_code="${4:-}"
+
+  local user_hash
+  user_hash=$(printf '%s' "${RECIPIENT_EMAIL:-unknown}" | sha256sum | cut -c1-8)
+  local kit_sha="unknown"
+  if [ -n "${KIT_DIR:-}" ] && [ -d "$KIT_DIR/.git" ]; then
+    kit_sha=$(cd "$KIT_DIR" && git rev-parse --short HEAD 2>/dev/null || echo unknown)
+  fi
+
+  local payload
+  payload=$(jq -nc \
+    --arg user_hash "$user_hash" \
+    --arg date_utc "$(date -u +%Y-%m-%d)" \
+    --arg time_utc "$(date -u +%H:%M:%S)" \
+    --argjson exit_code "$exit_code" \
+    --argjson duration_s "$duration" \
+    --argjson stdout_bytes "$stdout_bytes" \
+    --arg http_code "$http_code" \
+    --arg kit_sha "$kit_sha" \
+    --arg host "$(hostname)" \
+    '{user_hash:$user_hash, date_utc:$date_utc, time_utc:$time_utc, exit_code:$exit_code, duration_s:$duration_s, stdout_bytes:$stdout_bytes, http_code:$http_code, kit_sha:$kit_sha, host:$host}')
+
+  echo "=== telemetry: emit user=$user_hash exit=$exit_code dur=${duration}s http=${http_code:-none} ==="
+  if ! curl -sS -m 10 -X POST -H 'Content-Type: application/json' \
+       -d "$payload" "$TELEMETRY_URL" > /dev/null 2>&1; then
+    echo "    WARN: telemetry POST failed (non-fatal)"
+  fi
+}
+
+# ───────────────────────────────────────────────────────────
 # Preferences: init local file if missing
 # ───────────────────────────────────────────────────────────
 init_prefs_file() {
@@ -115,7 +159,24 @@ RECIPIENT_USERNAME="${RECIPIENT_USERNAME:-${RECIPIENT_EMAIL%%@*}}"
 TMP_BODY=$(mktemp)
 TMP_BRIEFING=$(mktemp)
 TMP_STDERR=$(mktemp)
-trap 'rm -f "$TMP_BODY" "$TMP_BRIEFING" "$TMP_STDERR"' EXIT
+
+# Telemetry state — read by EXIT trap. Updated as the run progresses.
+RUN_START=$(date +%s)
+CLAUDE_DURATION=0
+CLAUDE_STDOUT_BYTES=0
+HTTP_CODE=""
+
+# Cleanup + telemetry on any exit (explicit, error, or signal).
+# emit_telemetry has a TELEMETRY_EMITTED guard so explicit calls before
+# `exit N` take precedence (with richer state). The trap is a safety net.
+trap '
+  EXIT_CODE=$?
+  rm -f "$TMP_BODY" "$TMP_BRIEFING" "$TMP_STDERR"
+  emit_telemetry "$EXIT_CODE" \
+    "${CLAUDE_DURATION:-$(($(date +%s) - RUN_START))}" \
+    "${CLAUDE_STDOUT_BYTES:-0}" \
+    "${HTTP_CODE:-}"
+' EXIT
 
 SUBJECT="The Day Ahead — $(TZ=Australia/Sydney date '+%a %d %b')"
 
@@ -170,7 +231,9 @@ SUBJECT="The Day Ahead — $(TZ=Australia/Sydney date '+%a %d %b')"
   CLAUDE_EXIT=$?
   set -e
   CLAUDE_END=$(date +%s)
-  echo "    finished: exit=$CLAUDE_EXIT  duration=$((CLAUDE_END - CLAUDE_START))s  stdout=$(wc -c < "$TMP_BODY") bytes  stderr=$(wc -c < "$TMP_STDERR") bytes"
+  CLAUDE_DURATION=$((CLAUDE_END - CLAUDE_START))
+  CLAUDE_STDOUT_BYTES=$(wc -c < "$TMP_BODY")
+  echo "    finished: exit=$CLAUDE_EXIT  duration=${CLAUDE_DURATION}s  stdout=${CLAUDE_STDOUT_BYTES} bytes  stderr=$(wc -c < "$TMP_STDERR") bytes"
   if [ -s "$TMP_STDERR" ]; then
     echo "    --- aifx stderr ---"
     sed 's/^/    | /' "$TMP_STDERR"
